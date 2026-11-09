@@ -17,7 +17,7 @@ const tilt = (yaw: number, pitch: number) =>
   quatMul(quatFromAxisAngle([0, 1, 0], yaw), quatFromAxisAngle([1, 0, 0], pitch));
 
 // The first column is the follow timeline.
-const firstColumn: ColumnDef = { id: nextId++, kind: 'home' };
+const firstColumn: ColumnDef = { id: nextId++, kind: 'follow' };
 scene.setPose(firstColumn.id, { pos: [-200, 0, 0], rot: tilt(0.35, -0.06) });
 
 const readTheme = (): Theme => {
@@ -32,6 +32,7 @@ export const App = () => {
   const [columns, setColumns] = useState<ColumnDef[]>([firstColumn]);
   const [theme, setTheme] = useState<Theme>(readTheme);
   const [error, setError] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const stageRef = useRef<HTMLElement | null>(null);
   const columnsRef = useRef(columns);
   columnsRef.current = columns;
@@ -70,8 +71,9 @@ export const App = () => {
     }
   }, [theme]);
 
-  /** + button: one more follow timeline, to the right of the rightmost column */
-  const addColumn = () => {
+  /** + menu: one more column, to the right of the rightmost column */
+  const addColumn = (kind: 'follow' | 'global' | 'search') => {
+    setMenuOpen(false);
     const id = nextId++;
     const poses = columns.map((c) => scene.getPose(c.id)).filter((p) => p != null);
     const rightmost = poses.reduce<number | null>(
@@ -87,7 +89,7 @@ export const App = () => {
       z = 80;
     }
     scene.setPose(id, { pos: [x, 0, z], rot: tilt(id % 2 === 0 ? -0.3 : 0.3, 0.04) });
-    setColumns((current) => [...current, { id, kind: 'home' }]);
+    setColumns((current) => [...current, { id, kind }]);
   };
 
   const closeColumn = useCallback((id: number) => {
@@ -142,9 +144,28 @@ export const App = () => {
       )}
 
       <div className="panel">
-        <button title="カラムを追加" onClick={addColumn}>
-          +
-        </button>
+        <div className="panel-row">
+          {menuOpen && (
+            <>
+              <button title="フォロータイムライン" onClick={() => addColumn('follow')}>
+                ⌚
+              </button>
+              <button title="グローバルタイムライン" onClick={() => addColumn('global')}>
+                🌎
+              </button>
+              <button title="検索" onClick={() => addColumn('search')}>
+                🔎
+              </button>
+            </>
+          )}
+          <button
+            className={menuOpen ? 'panel-add open' : 'panel-add'}
+            title="カラムを追加"
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            +
+          </button>
+        </div>
         <button
           title="テーマ変更"
           onClick={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}

@@ -11,7 +11,6 @@
   --border: #e9e5e2;
   --link: #2f7fe6;
   --accent: #f48a9c;
-  --panel-bg: rgb(255 255 255 / 0.85);
   color-scheme: light;
 }
 
@@ -26,7 +25,6 @@
   --border: #223053;
   --link: #86a2ff;
   --accent: #4f6fe0;
-  --panel-bg: rgb(19 30 58 / 0.85);
   color-scheme: dark;
 }
 
@@ -123,6 +121,30 @@ body {
   padding-bottom: 64px;
   scrollbar-width: thin;
   scrollbar-color: var(--accent) transparent;
+}
+
+.search-form {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.search-input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  outline: none;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 14px;
+}
+
+.search-input:focus {
+  border-color: var(--accent);
 }
 
 .col-status {
@@ -404,29 +426,49 @@ video.media-image {
 
 .panel {
   position: fixed;
-  top: 12px;
-  right: 12px;
+  top: 8px;
+  right: 8px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  align-items: flex-end;
+  gap: 4px;
 }
 
+.panel-row {
+  display: flex;
+  gap: 4px;
+}
+
+/* No button shape: only the white silhouette of the character.
+   The glyph itself is transparent and its shadow, which has no offset and no blur,
+   is white. This also works for colour emoji. */
 .panel button {
   width: 44px;
   height: 44px;
   padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 22px;
-  background: var(--panel-bg);
-  color: var(--fg);
-  font-size: 22px;
-  line-height: 1;
+  border: 0;
+  background: none;
+  color: transparent;
+  font-size: 30px;
+  line-height: 44px;
+  text-shadow: 0 0 0 #fff;
   cursor: pointer;
-  box-shadow: 0 2px 6px rgb(0 0 0 / 0.2);
+  transition: transform 0.12s;
 }
 
 .panel button:hover {
-  border-color: var(--accent);
+  transform: scale(1.2);
+}
+
+.panel .panel-add {
+  font-size: 40px;
+  font-weight: bold;
+}
+
+/* the + becomes a x while the menu is open */
+.panel .panel-add.open,
+.panel .panel-add.open:hover {
+  transform: rotate(45deg);
 }
 
 .hud {

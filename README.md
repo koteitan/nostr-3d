@@ -15,11 +15,12 @@ https://koteitan.github.io/nostr-3d/
 | mouse wheel on the title bar | move the column nearer / farther |
 | drag near one of the four corners | rotate the column around its centre |
 | double click a note | open the note and its replies as a new column to the right of the note |
-| `+` (top right) | add a column |
+| `+` (top right) | choose a column to add: ⌚ follow timeline, 🌎 global timeline, 🔎 search |
 | `🌙` (top right) | switch the light / dark theme |
 
 - The first column is the timeline of the accounts you follow. The public key comes from a
   NIP-07 browser extension. Without one, the global timeline is shown.
+- Search uses the NIP-50 relays `search.nos.today` and `relay.noswhere.com`.
 - Relays: kind:10002 of your public key is looked up on the bootstrap relays
   (`directory.yabu.me`, `purplepag.es`, `user.kindpag.es`, `indexer.coracle.social`); if there is
   none, the relay list in kind:3; if there is none, `yabu.me`, `nostr-pub.wellorder.net` and

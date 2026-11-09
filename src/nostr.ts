@@ -33,6 +33,9 @@ export const DEFAULT_RELAYS = [
   'wss://relay.snort.social',
 ];
 
+/** relays that support search (NIP-50) */
+export const SEARCH_RELAYS = ['wss://search.nos.today', 'wss://relay.noswhere.com'];
+
 /** notes that each relay sends from its store when a timeline opens */
 const INITIAL_NOTES = 30;
 const MAX_AUTHORS_PER_FILTER = 1000;
@@ -105,7 +108,10 @@ export interface NostrStatus {
   relays: string[];
   relaySource: 'kind:10002' | 'kind:3' | 'default' | null;
   follows: number;
-  /** 'follow': notes of the follow list. 'global': no NIP-07 pubkey or no follow list. */
+  /**
+   * What a follow column shows. 'follow': notes of the follow list.
+   * 'global': the global timeline, because there is no NIP-07 pubkey or no follow list.
+   */
   timeline: 'follow' | 'global' | null;
 }
 
@@ -130,8 +136,18 @@ export const subscribeStatus = (listener: Listener) => {
 };
 export const getStatus = () => status;
 
-/** the notes of the follow list (every home column shows this feed) */
+/** the notes of the follow list (every follow column shows this feed) */
 export const homeFeed = new Feed('desc', 100);
+/** the notes of everybody on the relays of the user (every global column shows this feed) */
+export const globalFeed = new Feed('desc', 100);
+/** a feed that never gets a note */
+export const EMPTY_FEED = new Feed('desc', 0);
+
+let resolveRelaysReady: () => void = () => undefined;
+/** resolved when the relays of the user are known */
+const relaysReady = new Promise<void>((resolve) => {
+  resolveRelaysReady = resolve;
+});
 
 // --------------------------------------------------------------- bootstrap
 
@@ -302,32 +318,61 @@ export const startNostr = async () => {
       ? await discoverRelays(pubkey)
       : { relays: DEFAULT_RELAYS, source: 'default' as const };
   rxNostr.setDefaultRelays(relays);
+  resolveRelaysReady();
   setStatus({ relays, relaySource: source, stage: 'フォローリストを取得しています…' });
 
   const follows = pubkey != null ? await fetchFollows(pubkey, relays) : [];
 
+  if (pubkey == null || follows.length === 0) {
+    startGlobalFeed();
+    setStatus({ follows: 0, timeline: 'global', stage: 'ノートを待っています…' });
+    return;
+  }
+
+  const authors = [...new Set([pubkey, ...follows])];
+  const filters: LazyFilter[] = [];
+  for (let i = 0; i < authors.length; i += MAX_AUTHORS_PER_FILTER) {
+    filters.push({
+      kinds: [1],
+      authors: authors.slice(i, i + MAX_AUTHORS_PER_FILTER),
+      limit: INITIAL_NOTES,
+    });
+  }
   const req = createRxForwardReq();
   rxNostr
     .use(req)
     .pipe(uniq())
     .subscribe((packet) => homeFeed.add(packet.event as NostrEvent));
+  req.emit(filters);
+  setStatus({ follows: follows.length, timeline: 'follow', stage: 'ノートを待っています…' });
+};
 
-  if (pubkey != null && follows.length > 0) {
-    const authors = [...new Set([pubkey, ...follows])];
-    const filters = [];
-    for (let i = 0; i < authors.length; i += MAX_AUTHORS_PER_FILTER) {
-      filters.push({
-        kinds: [1],
-        authors: authors.slice(i, i + MAX_AUTHORS_PER_FILTER),
-        limit: INITIAL_NOTES,
-      });
-    }
-    req.emit(filters);
-    setStatus({ follows: follows.length, timeline: 'follow', stage: 'ノートを待っています…' });
-  } else {
+let globalStarted = false;
+
+/** Starts the real-time subscription of the global timeline (once). */
+export const startGlobalFeed = () => {
+  if (globalStarted) return;
+  globalStarted = true;
+  void relaysReady.then(() => {
+    const req = createRxForwardReq();
+    rxNostr
+      .use(req)
+      .pipe(uniq())
+      .subscribe((packet) => globalFeed.add(packet.event as NostrEvent));
     req.emit({ kinds: [1], limit: INITIAL_NOTES });
-    setStatus({ follows: 0, timeline: 'global', stage: 'ノートを待っています…' });
-  }
+  });
+};
+
+/** Notes that match the query (NIP-50), updated in real time. */
+export const openSearch = (query: string): { feed: Feed; close: () => void } => {
+  const feed = new Feed('desc', 100);
+  const req = createRxForwardReq();
+  const subscription = rxNostr
+    .use(req, { on: { relays: SEARCH_RELAYS } })
+    .pipe(uniq())
+    .subscribe((packet) => feed.add(packet.event as NostrEvent));
+  req.emit({ kinds: [1], search: query, limit: INITIAL_NOTES });
+  return { feed, close: () => subscription.unsubscribe() };
 };
 
 /** The note and its replies, updated in real time. */

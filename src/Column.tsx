@@ -1,6 +1,7 @@
 import {
   memo,
   useCallback,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -9,12 +10,22 @@ import {
 } from 'react';
 
 import { ColumnContext, Mention, NoteContent, shortNpub } from './content';
-import { getStatus, homeFeed, subscribeStatus, type Feed, type NostrEvent } from './nostr';
+import {
+  EMPTY_FEED,
+  getStatus,
+  globalFeed,
+  homeFeed,
+  openSearch,
+  startGlobalFeed,
+  subscribeStatus,
+  type Feed,
+  type NostrEvent,
+} from './nostr';
 import { useProfile } from './profiles';
 import { scene } from './scene';
 
 export type ColumnDef =
-  | { id: number; kind: 'home' }
+  | { id: number; kind: 'follow' | 'global' | 'search' }
   | { id: number; kind: 'thread'; root: NostrEvent; feed: Feed; close: () => void };
 
 /** the element is drawn into the canvas (ignored outside of <canvas content="drawable">) */
@@ -152,9 +163,34 @@ interface ColumnProps {
 export const Column = memo(({ def, onClose, onOpenThread }: ColumnProps) => {
   const ref = useRef<HTMLDivElement>(null);
   const { id } = def;
-  const feed = def.kind === 'home' ? homeFeed : def.feed;
-  const notes = useSyncExternalStore(feed.subscribe, feed.getSnapshot);
   const status = useSyncExternalStore(subscribeStatus, getStatus);
+
+  // search column: the text in the search field, and the query that was submitted
+  const [draft, setDraft] = useState('');
+  const [query, setQuery] = useState('');
+  const [searchFeed, setSearchFeed] = useState<Feed | null>(null);
+  useEffect(() => {
+    if (def.kind !== 'search' || query === '') {
+      setSearchFeed(null);
+      return undefined;
+    }
+    const search = openSearch(query);
+    setSearchFeed(search.feed);
+    return search.close;
+  }, [def.kind, query]);
+
+  useEffect(() => {
+    if (def.kind === 'global') startGlobalFeed();
+  }, [def.kind]);
+
+  // A follow column shows the global timeline when there is no follow list.
+  const substitute = def.kind === 'follow' && status.timeline === 'global';
+  let feed: Feed;
+  if (def.kind === 'thread') feed = def.feed;
+  else if (def.kind === 'search') feed = searchFeed ?? EMPTY_FEED;
+  else if (def.kind === 'global' || substitute) feed = globalFeed;
+  else feed = homeFeed;
+  const notes = useSyncExternalStore(feed.subscribe, feed.getSnapshot);
 
   useLayoutEffect(() => scene.register(id, ref.current!), [id]);
 
@@ -175,12 +211,21 @@ export const Column = memo(({ def, onClose, onOpenThread }: ColumnProps) => {
     drag(ev, (x, y, prevX, prevY) => scene.rotateArc(id, center, radius, prevX, prevY, x, y));
   };
 
-  const title =
-    def.kind === 'thread'
-      ? '💬 スレッド'
-      : status.timeline === 'global'
-        ? '🌐 グローバル'
-        : '🏠 ホーム';
+  const title = {
+    follow: '⌚ フォロー',
+    global: '🌎 グローバル',
+    search: query === '' ? '🔎 検索' : `🔎 ${query}`,
+    thread: '💬 スレッド',
+  }[def.kind];
+
+  let empty: string | null = null;
+  if (notes.length === 0) {
+    if (def.kind === 'follow') empty = status.stage;
+    else if (def.kind === 'global') empty = 'ノートを待っています…';
+    else if (def.kind === 'search') {
+      empty = query === '' ? '検索語を入力して Enter を押してください。' : '検索しています…';
+    }
+  }
 
   return (
     <ColumnContext.Provider value={id}>
@@ -195,11 +240,28 @@ export const Column = memo(({ def, onClose, onOpenThread }: ColumnProps) => {
             ×
           </button>
         </div>
+        {def.kind === 'search' && (
+          <form
+            className="search-form"
+            onSubmit={(ev) => {
+              ev.preventDefault();
+              setQuery(draft.trim());
+            }}
+          >
+            <input
+              className="search-input"
+              type="text"
+              enterKeyHint="search"
+              placeholder="検索"
+              autoFocus
+              value={draft}
+              onChange={(ev) => setDraft(ev.target.value)}
+            />
+          </form>
+        )}
         <div className="col-body">
-          {def.kind === 'home' && notes.length === 0 && (
-            <div className="col-status">{status.stage}</div>
-          )}
-          {def.kind === 'home' && status.timeline === 'global' && (
+          {empty != null && <div className="col-status">{empty}</div>}
+          {substitute && (
             <div className="col-status">
               {status.pubkey == null
                 ? 'NIP-07 の公開鍵が取得できないため、グローバルタイムラインを表示しています。'
